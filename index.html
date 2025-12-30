@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prototipo de App de Match (V4: Transferencia de Créditos)</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Fuente Inter de Google Fonts y estilos base */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .card-container {
+            perspective: 1000px;
+        }
+        .profile-card {
+            transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out;
+            transform-origin: center center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .swipe-right {
+            transform: translate(200%, 0) rotate(20deg);
+            opacity: 0;
+        }
+        .swipe-left {
+            transform: translate(-200%, 0) rotate(-20deg);
+            opacity: 0;
+        }
+        /* Clase para simular el chat/video call */
+        .match-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-md bg-white rounded-xl shadow-2xl p-6 relative">
+        <h1 class="text-3xl font-bold text-center text-pink-600 mb-4">💖 Match App Prototype (V4)</h1>
+
+        <!-- Barra de Navegación y Estado -->
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <button id="nav-swipe" onclick="changeView('swipe')" class="text-pink-600 font-semibold p-2 border-b-2 border-pink-600 transition duration-150">
+                Swiping
+            </button>
+            <button id="nav-matches" onclick="changeView('matches')" class="text-gray-500 font-semibold p-2 transition duration-150">
+                Matches (<span id="match-count">0</span>)
+            </button>
+        </div>
+
+        <!-- Información de Créditos y Usuario -->
+        <div id="user-stats" class="text-sm text-center text-gray-600 mb-4 bg-gray-100 p-2 rounded-lg">
+            <span id="user-info">Cargando ID...</span> | Créditos: <span id="user-credits" class="font-bold text-blue-600">...</span>
+            <div class="mt-1 text-xs text-red-600 font-medium" id="monetization-rule"></div>
+        </div>
+
+        <!-- Contenedor Principal de Vistas -->
+        <div id="view-container">
+            <!-- VISTA DE SWIPE -->
+            <div id="swipe-view">
+                <!-- Mensajes de Estado (Carga, Error) -->
+                <div id="status-message" class="text-center text-gray-500 mb-4">
+                    Cargando...
+                </div>
+
+                <!-- Contenedor del Perfil -->
+                <div id="profile-container" class="card-container h-96 relative">
+                    <!-- La tarjeta del perfil se insertará aquí -->
+                </div>
+
+                <!-- Controles de Swipe -->
+                <div id="controls" class="flex justify-around mt-8" style="display: none;">
+                    <button id="btn-pass" onclick="handleSwipe('pass')"
+                        class="bg-red-500 hover:bg-red-600 text-white p-4 rounded-full shadow-lg transition duration-200 transform hover:scale-105 active:scale-95"
+                        title="Pasar">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                    <button id="btn-like" onclick="handleSwipe('like')"
+                        class="bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-lg transition duration-200 transform hover:scale-105 active:scale-95"
+                        title="Me Gusta">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VISTA DE MATCHES -->
+            <div id="matches-view" class="hidden">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">Tus Matches Mutuos</h2>
+                <div id="matches-list" class="space-y-3 h-96 overflow-y-auto">
+                    <!-- Lista de Matches se insertará aquí -->
+                    <p id="no-matches" class="text-center text-gray-500 italic hidden">Aún no hay matches. ¡Desliza con confianza! (Deben dar "Me Gusta" mutuo).</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL GENERAL (para MATCH y ERRORES de Crédito) -->
+    <div id="general-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden items-center justify-center p-4 z-50">
+        <div id="modal-content" class="bg-white p-8 rounded-xl text-center shadow-2xl transform transition-all max-w-sm">
+            <!-- Contenido dinámico -->
+        </div>
+    </div>
+    
+    <!-- MODAL DE CONTENIDO (Para interacciones post-match) -->
+    <div id="content-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-lg w-full">
+            <h2 id="content-modal-title" class="text-2xl font-bold text-pink-600 mb-4">Contenido de [Nombre]</h2>
+            <div id="content-display" class="relative w-full h-80 bg-gray-200 rounded-lg flex items-center justify-center mb-4 overflow-hidden">
+                <img id="current-content-img" src="" alt="Contenido de Perfil" class="max-h-full max-w-full object-contain">
+                <span class="absolute top-2 left-2 bg-pink-500 text-white text-xs font-semibold px-2 py-1 rounded-full">Foto de Perfil</span>
+            </div>
+            
+            <div id="content-actions" class="flex justify-between items-center mb-4">
+                <button onclick="handleContentInteraction('like', 'user_a')" 
+                    class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full transition duration-150">
+                    👍 Me Gusta (1 Cr.)
+                </button>
+                <div class="text-sm text-gray-600">
+                    Likes: <span id="content-likes">0</span> | Comentarios: <span id="content-comments-count">0</span>
+                </div>
+            </div>
+            
+            <textarea id="comment-input" placeholder="Añadir un comentario (1 crédito)..." 
+                      class="w-full p-2 border rounded-lg resize-none mb-3"></textarea>
+            <button onclick="handleContentInteraction('comment', 'user_a')" 
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-150">
+                Comentar (1 Cr.)
+            </button>
+            
+            <div class="mt-4 max-h-40 overflow-y-auto border-t pt-3">
+                <h3 class="font-semibold mb-2">Comentarios Recientes:</h3>
+                <ul id="comments-list" class="space-y-2 text-sm text-gray-700">
+                    <!-- Los comentarios se insertarán aquí -->
+                </ul>
+            </div>
+            
+            <button onclick="closeContentModal()" class="mt-6 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-full transition duration-150 w-full">
+                Cerrar
+            </button>
+        </div>
+    </div>
+
+
+    <!-- Configuración e inicialización de Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, getDocs, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONSTANTES Y CONFIGURACIÓN ---
+        const COSTO_LIKE_PROFILE = 5;    // Créditos por dar 'Like' al perfil.
+        const COSTO_VIDEOLLAMADA = 20;   // Créditos por iniciar videollamada.
+        const COSTO_CONTENT_LIKE = 1;    // Créditos por dar 'Like' a foto/video.
+        const COSTO_COMMENT = 1;         // Créditos por comentar en foto/video.
+        const CREDITOS_INICIALES = 20;   // Créditos iniciales para todos los usuarios.
+
+        // Configuración Global (MANDATORIA para el entorno Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // Acepta la configuración inyectada por el entorno, incluso si está vacía, para evitar el error de configuración faltante.
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId = null;
+        let currentUserData = {}; // Almacena datos del usuario actual (incluyendo créditos y género)
+        let profilesData = [];
+        let profileIndex = 0;
+        let currentMatches = [];
+        let currentMatchReceiverId = null; // ID del usuario cuyo contenido se está viendo
+
+        // Perfiles de prueba (Datos de ejemplo para la inicialización)
+        // Nota: Solo las mujeres tienen datos de 'media' para la interacción pagada
+        const mockProfiles = [
+            { id: 'user_a', name: 'Laura', age: 28, bio: 'Amante del café y la música indie.', image: 'https://placehold.co/400x500/A078FF/ffffff?text=Laura', gender: 'female', credits: CREDITOS_INICIALES, likes: {}, 
+              media: [{ type: 'photo', url: 'https://placehold.co/450x450/A078FF/ffffff?text=Foto+de+Laura', likes: 12, comments: [{user: 'system_x', text: '¡Genial foto!'}, {user: 'system_y', text: 'Me gusta la luz'}]}]
+            },
+            { id: 'user_b', name: 'Juan', age: 32, bio: 'Ingeniero de día, cocinero de noche.', image: 'https://placehold.co/400x500/FF5733/ffffff?text=Juan', gender: 'male', credits: CREDITOS_INICIALES, likes: {}, media: [] },
+            { id: 'user_c', name: 'Sofía', age: 25, bio: 'Diseñadora gráfica. Mi pasión es pintar.', image: 'https://placehold.co/400x500/33FF57/ffffff?text=Sofia', gender: 'female', credits: CREDITOS_INICIALES, likes: {}, 
+              media: [{ type: 'video', url: 'https://placehold.co/450x450/33FF57/000000?text=Video+de+Sofia', likes: 5, comments: [{user: 'system_z', text: 'Excelente clip!'}]}]
+            },
+            { id: 'user_d', name: 'Pedro', age: 35, bio: 'Cine clásico y juegos de mesa.', image: 'https://placehold.co/400x500/3357FF/ffffff?text=Pedro', gender: 'male', credits: CREDITOS_INICIALES, likes: {}, media: [] },
+        ];
+        
+        // --- FUNCIONES DE INTERFAZ (MODAL Y VISTAS) ---
+
+        /** Muestra un modal con contenido personalizado */
+        function showModal(title, bodyHtml, buttonText = 'Entendido', buttonAction = 'closeGeneralModal()') {
+            document.getElementById('content-modal').style.display = 'none'; // Asegura que el modal de contenido esté cerrado
+            const modal = document.getElementById('general-modal');
+            const content = document.getElementById('modal-content');
+
+            content.innerHTML = `
+                <div class="text-6xl mb-4 ${title.includes('MATCH') ? 'animate-pulse' : ''}">${title.includes('MATCH') ? '🎉' : '⚠️'}</div>
+                <h2 class="text-4xl font-extrabold text-pink-600 mb-4">${title}</h2>
+                <p class="text-gray-700 mb-6">${bodyHtml}</p>
+                <button onclick="${buttonAction}" class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded-full transition duration-150">
+                    ${buttonText}
+                </button>
+            `;
+            modal.style.display = 'flex';
+        }
+
+        window.closeGeneralModal = () => {
+            document.getElementById('general-modal').style.display = 'none';
+        }
+
+        window.closeContentModal = () => {
+             document.getElementById('content-modal').style.display = 'none';
+        }
+
+        /** Cambia entre la vista de swipe y la vista de matches */
+        window.changeView = (viewName) => {
+            document.getElementById('content-modal').style.display = 'none'; // Cierra el modal de contenido
+            document.getElementById('general-modal').style.display = 'none'; // Cierra el modal general
+            
+            const swipeView = document.getElementById('swipe-view');
+            const matchesView = document.getElementById('matches-view');
+            const navSwipe = document.getElementById('nav-swipe');
+            const navMatches = document.getElementById('nav-matches');
+
+            if (viewName === 'swipe') {
+                swipeView.classList.remove('hidden');
+                matchesView.classList.add('hidden');
+                navSwipe.classList.add('border-b-2', 'border-pink-600', 'text-pink-600');
+                navMatches.classList.remove('border-b-2', 'border-pink-600', 'text-pink-600');
+                navMatches.classList.add('text-gray-500');
+            } else if (viewName === 'matches') {
+                swipeView.classList.add('hidden');
+                matchesView.classList.remove('hidden');
+                navMatches.classList.add('border-b-2', 'border-pink-600', 'text-pink-600');
+                navSwipe.classList.remove('border-b-2', 'border-pink-600', 'text-pink-600');
+                navSwipe.classList.add('text-gray-500');
+                renderMatchesList(); 
+            }
+        }
+
+        // --- LÓGICA DE TRANSACCIONES ---
+
+        /**
+         * Transfiere créditos de un usuario a otro y actualiza el estado local del pagador.
+         * Retorna true si la transacción fue exitosa, false si falló por falta de fondos.
+         */
+        async function transferCredits(fromUserId, toUserId, amount, reason) {
+            if (currentUserData.credits < amount) {
+                return false;
+            }
+
+            try {
+                // 1. Deducir del pagador (el usuario actual)
+                const payerRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', fromUserId);
+                const newCreditsPayer = currentUserData.credits - amount;
+                await updateDoc(payerRef, { credits: newCreditsPayer });
+                
+                // Actualizar estado local del pagador (currentUserData)
+                currentUserData.credits = newCreditsPayer;
+                document.getElementById('user-credits').textContent = newCreditsPayer;
+
+                // 2. Añadir al receptor (si hay receptor, si no, los créditos se "queman")
+                if (toUserId) {
+                    const receiverRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', toUserId);
+                    const receiverSnap = await getDoc(receiverRef);
+                    const currentCreditsReceiver = receiverSnap.exists() ? receiverSnap.data().credits || 0 : 0;
+                    const newCreditsReceiver = currentCreditsReceiver + amount;
+
+                    await updateDoc(receiverRef, { credits: newCreditsReceiver });
+                    console.log(`[Transaction Success] ${fromUserId.substring(0,4)} paid ${amount} to ${toUserId.substring(0,4)} for: ${reason}`);
+                } else {
+                     console.log(`[Transaction Success] ${fromUserId.substring(0,4)} paid ${amount} to APP for: ${reason}`);
+                }
+                return true;
+
+            } catch (error) {
+                console.error("Error during credit transfer:", error);
+                throw new Error("Transaction failed due to database error. Please try again.");
+            }
+        }
+
+
+        // --- LÓGICA DE SWIPE Y PERFILES ---
+
+        /** Renderiza la tarjeta del perfil actual en la cola. */
+        function renderProfileCard(profile) {
+            const container = document.getElementById('profile-container');
+            container.innerHTML = '';
+            
+            if (!profile) {
+                container.innerHTML = '<div class="text-center text-gray-500 mt-16">¡Has visto a todos! Vuelve más tarde.</div>';
+                document.getElementById('controls').style.display = 'none';
+                document.getElementById('status-message').textContent = 'Esperando nuevos perfiles...';
+                return;
+            }
+
+            const genderEmoji = profile.gender === 'female' ? '♀️' : '♂️';
+            const mediaCount = profile.media ? profile.media.length : 0;
+            const mediaInfo = mediaCount > 0 ? `<span class="text-xs text-pink-600 font-semibold ml-2">(${mediaCount} Contenido)</span>` : '';
+            
+            document.getElementById('status-message').textContent = `Viendo perfil de ${profile.name} ${genderEmoji}`;
+            document.getElementById('controls').style.display = 'flex';
+
+            const card = document.createElement('div');
+            card.id = 'current-card';
+            card.className = 'profile-card absolute inset-0 bg-white rounded-xl overflow-hidden shadow-xl border border-gray-100';
+            card.innerHTML = `
+                <img src="${profile.image}" onerror="this.onerror=null;this.src='https://placehold.co/400x500/6B7280/ffffff?text=${profile.name}'"
+                     alt="${profile.name}" class="w-full h-2/3 object-cover">
+                <div class="p-4">
+                    <h2 class="text-2xl font-bold text-gray-800">${profile.name}, ${profile.age} ${genderEmoji} ${mediaInfo}</h2>
+                    <p class="text-sm text-gray-500 mt-1 truncate">${profile.bio}</p>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+        
+        /** Carga los perfiles disponibles de Firestore. */
+        async function loadProfiles() {
+            if (!db || !userId) return;
+
+            // ... (Lógica de carga de perfiles omitida por simplicidad, usa mockProfiles si no encuentra)
+
+            try {
+                const profilesCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
+                const q = query(profilesCollectionRef); 
+                const querySnapshot = await getDocs(q);
+                
+                const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', userId);
+                const userSnap = await getDoc(userRef);
+                const userLikes = userSnap.exists() ? userSnap.data().likes || {} : {};
+                const userPasses = userSnap.exists() ? userSnap.data().passes || {} : {};
+                
+                const excludedIds = new Set([...Object.keys(userLikes), ...Object.keys(userPasses), userId]);
+                
+                profilesData = querySnapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(profile => !excludedIds.has(profile.id));
+
+                // Si no hay perfiles en la base de datos (aparte del usuario actual), inicializamos los mocks.
+                if (profilesData.length === 0 && excludedIds.size < mockProfiles.length + 1) { 
+                     await initializeMockProfiles();
+                     // Volvemos a filtrar después de inicializar
+                     profilesData = mockProfiles.filter(p => !excludedIds.has(p.id));
+                }
+
+                profileIndex = 0;
+                renderProfileCard(profilesData[profileIndex]);
+
+            } catch (error) {
+                console.error("Error al cargar perfiles:", error);
+                document.getElementById('status-message').textContent = 'Error al cargar perfiles. Inténtalo de nuevo.';
+            }
+        }
+
+
+        /** Lógica de deslizamiento: 'like' o 'pass'. */
+        window.handleSwipe = async (action) => {
+            if (profileIndex >= profilesData.length) return;
+
+            const targetProfile = profilesData[profileIndex];
+            const currentCard = document.getElementById('current-card');
+            
+            document.getElementById('btn-like').disabled = true;
+            document.getElementById('btn-pass').disabled = true;
+            
+            const isPayerForLike = currentUserData.gender === 'male' && targetProfile.gender === 'female';
+
+            // --- REGLA DE MONETIZACIÓN 1: PAGO Y TRANSFERENCIA POR LIKE DE PERFIL ---
+            if (action === 'like' && isPayerForLike) {
+                const COSTO = COSTO_LIKE_PROFILE;
+                try {
+                    const success = await transferCredits(userId, targetProfile.id, COSTO, 'Profile Like');
+                    
+                    if (!success) {
+                        showModal('Créditos Insuficientes', 
+                                  `Necesitas ${COSTO} créditos para dar "Me Gusta" a ${targetProfile.name}, pero solo tienes ${currentUserData.credits}.`, 
+                                  'Aceptar');
+                        document.getElementById('btn-like').disabled = false;
+                        document.getElementById('btn-pass').disabled = false;
+                        return; // Bloquear el like si no hay créditos
+                    }
+                } catch (error) {
+                    showModal('Error de Cobro', error.message || 'Hubo un error al deducir/transferir créditos.', 'Aceptar');
+                    document.getElementById('btn-like').disabled = false;
+                    document.getElementById('btn-pass').disabled = false;
+                    return;
+                }
+            }
+            // --- FIN REGLA DE MONETIZACIÓN 1 ---
+
+            // 1. Animación del "swipe"
+            currentCard.classList.add(action === 'like' ? 'swipe-right' : 'swipe-left');
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+            currentCard.remove();
+
+            document.getElementById('btn-like').disabled = false;
+            document.getElementById('btn-pass').disabled = false;
+
+
+            // 2. Lógica de Matchmaking en Firestore
+            try {
+                const myProfileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', userId);
+
+                // A. Actualizar mi lista de "Pasados" o "Me Gusta"
+                if (action === 'pass') {
+                    await updateDoc(myProfileRef, { [`passes.${targetProfile.id}`]: true });
+                } else if (action === 'like') {
+                    await updateDoc(myProfileRef, { [`likes.${targetProfile.id}`]: true });
+
+                    // 2. Chequear si es un MATCH (requiere el like del otro, que simulamos que ya ocurrió)
+                    const targetProfileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', targetProfile.id);
+                    const targetSnap = await getDoc(targetProfileRef);
+                    const targetLikes = targetSnap.exists() ? targetSnap.data().likes || {} : {};
+
+                    if (targetLikes[userId]) {
+                        // ¡MATCH MUTUO!
+                        const matchId = [userId, targetProfile.id].sort().join('_');
+                        const matchRef = doc(db, 'artifacts', appId, 'public', 'data', 'matches', matchId);
+
+                        await setDoc(matchRef, {
+                            user1Id: userId,
+                            user2Id: targetProfile.id,
+                            name1: currentUserData.name || 'Yo',
+                            name2: targetProfile.name,
+                            gender1: currentUserData.gender,
+                            gender2: targetProfile.gender,
+                            timestamp: Date.now(),
+                            active: true 
+                        }, { merge: true });
+
+                        showModal('¡MATCH!', `¡Tú y ${targetProfile.name} se gustan mutuamente! Ve a la pestaña 'Matches' para interactuar.`, 'Ir a Matches', "changeView('matches'); closeGeneralModal();");
+                    } else if (isPayerForLike) {
+                        // Notificar el costo si fue un like pagado y no hubo match inmediato
+                         showModal('Like Enviado (Transferido)', 
+                              `${targetProfile.name} recibirá tu Like y tus ${COSTO_LIKE_PROFILE} créditos.`, 
+                              'Continuar');
+                    }
+                }
+            } catch (error) {
+                console.error("Error al procesar el swipe:", error);
+                document.getElementById('status-message').textContent = 'Error de conexión. Inténtalo de nuevo.';
+            }
+
+            // 3. Avanzar al siguiente perfil
+            profileIndex++;
+            renderProfileCard(profilesData[profileIndex]);
+        };
+
+        // --- LÓGICA DE CRÉDITOS, VIDEOLLAMADAS Y CONTENIDO ---
+        
+        /** Renderiza la lista de matches activos. */
+        function renderMatchesList() {
+            const listContainer = document.getElementById('matches-list');
+            listContainer.innerHTML = '';
+            
+            document.getElementById('match-count').textContent = currentMatches.length;
+
+            if (currentMatches.length === 0) {
+                document.getElementById('no-matches').classList.remove('hidden');
+                return;
+            } else {
+                document.getElementById('no-matches').classList.add('hidden');
+            }
+
+            currentMatches.forEach(match => {
+                const otherUserId = match.user1Id === userId ? match.user2Id : match.user1Id;
+                const otherUserName = match.user1Id === userId ? match.name2 : match.name1;
+                const otherUserGender = match.user1Id === userId ? match.gender2 : match.gender1;
+
+                const genderEmoji = otherUserGender === 'female' ? '♀️' : '♂️';
+                
+                const isPayer = currentUserData.gender === 'male' && otherUserGender === 'female';
+                
+                let actionButtonsHtml = '';
+
+                if (currentUserData.gender === 'male') {
+                    // Hombre: Puede llamar y ver contenido de mujeres
+                    const callButtonText = `Llamar (${COSTO_VIDEOLLAMADA} Cr.)`;
+                    const contentButtonText = `Contenido (1 Cr.)`;
+
+                    actionButtonsHtml = `
+                        <button onclick="startVideoCall('${match.id}', '${otherUserGender}', '${otherUserName}', '${otherUserId}')"
+                            class="bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold py-2 px-3 rounded-full transition duration-150 transform hover:scale-105 mr-2"
+                        >
+                            ${callButtonText}
+                        </button>
+                        ${otherUserGender === 'female' ? `
+                        <button onclick="viewMatchContent('${otherUserId}', '${otherUserName}')"
+                            class="bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-2 px-3 rounded-full transition duration-150 transform hover:scale-105"
+                        >
+                            ${contentButtonText}
+                        </button>` : ''}
+                    `;
+                } else {
+                    // Mujer: Solo puede mandar mensajes (simulado)
+                    actionButtonsHtml = `
+                        <button disabled class="bg-gray-300 text-gray-600 text-sm font-bold py-2 px-3 rounded-full mr-2 cursor-not-allowed">
+                            Mensajear (Escribir)
+                        </button>`;
+                }
+
+                const matchItem = document.createElement('div');
+                matchItem.className = 'match-item flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-pink-100 shadow-sm';
+                matchItem.innerHTML = `
+                    <div>
+                        <p class="font-bold text-gray-800">${otherUserName} ${genderEmoji}</p>
+                        <p class="text-sm text-gray-500 text-gray-500">Match ID: ${match.id.substring(0, 8)}...</p>
+                    </div>
+                    <div class="flex">
+                        ${actionButtonsHtml}
+                    </div>
+                `;
+                listContainer.appendChild(matchItem);
+            });
+        }
+
+        /** Lógica principal de Videollamada y Deducción de Créditos/Transferencia. */
+        window.startVideoCall = async (matchId, targetGender, targetName, targetId) => {
+            if (!userId || !currentUserData.gender || currentUserData.credits === undefined) {
+                showModal('Error de Carga', 'Tu perfil no está completamente cargado. Por favor, espera o recarga la página.', 'Aceptar');
+                return;
+            }
+
+            const isPayer = currentUserData.gender === 'male' && targetGender === 'female';
+            
+            // --- REGLA DE MONETIZACIÓN 2: PAGO Y TRANSFERENCIA POR LLAMADA ---
+            if (isPayer) {
+                if (currentUserData.credits < COSTO_VIDEOLLAMADA) {
+                    showModal('Créditos Insuficientes', 
+                              `Necesitas ${COSTO_VIDEOLLAMADA} créditos para iniciar la videollamada con ${targetName}, pero solo tienes ${currentUserData.credits}.`, 
+                              'Aceptar');
+                    return;
+                }
+                
+                // Deducir y transferir créditos
+                try {
+                    await transferCredits(userId, targetId, COSTO_VIDEOLLAMADA, 'Video Call');
+                } catch (error) {
+                    showModal('Error de Cobro', error.message || 'Hubo un error al deducir/transferir los créditos.', 'Aceptar');
+                    return;
+                }
+            } 
+            
+            // 3. Iniciar Videollamada (Simulación)
+            const statusMessage = isPayer 
+                ? `Llamada iniciada con ${targetName}. Se dedujeron ${COSTO_VIDEOLLAMADA} créditos y se transfirieron a ${targetName}.`
+                : `Llamada iniciada con ${targetName}. Es gratis.`;
+                
+            showModal('Conectando...', 
+                      `${statusMessage}<br><br><strong>(Simulación: Aquí se conecta la API de video real.)</strong>`, 
+                      'Finalizar Llamada');
+        }
+        
+        // --- LÓGICA DE INTERACCIÓN CON CONTENIDO ---
+
+        /** Muestra el modal de contenido para interactuar con fotos/videos. */
+        window.viewMatchContent = (targetId, targetName) => {
+            if (currentUserData.gender === 'female') return; // Solo hombres pagan e interactúan con este contenido.
+
+            currentMatchReceiverId = targetId; // Establece el ID del receptor globalmente
+            
+            // Buscar datos simulados del contenido (solo por UI, los datos reales deberían venir de Firestore)
+            const targetProfile = mockProfiles.find(p => p.id === targetId) || {};
+            const mediaItem = targetProfile.media?.[0]; // Solo mostramos el primer elemento por simplicidad de UI
+
+            if (!mediaItem) {
+                showModal('Sin Contenido', `${targetName} aún no ha subido fotos o videos.`, 'Entendido');
+                return;
+            }
+
+            document.getElementById('content-modal-title').textContent = `Contenido de ${targetName}`;
+            document.getElementById('current-content-img').src = mediaItem.url;
+            document.getElementById('content-likes').textContent = mediaItem.likes;
+            document.getElementById('content-comments-count').textContent = mediaItem.comments.length;
+            
+            // Renderizar comentarios simulados
+            const commentsList = document.getElementById('comments-list');
+            commentsList.innerHTML = mediaItem.comments.map(c => 
+                `<li class="border-b border-gray-100 pb-1"><strong>${c.user}:</strong> ${c.text}</li>`
+            ).join('');
+            
+            // Configurar botones con el ID correcto
+            document.querySelector('#content-actions button').setAttribute('onclick', `handleContentInteraction('like', '${targetId}')`);
+            document.querySelector('#content-modal .bg-blue-500').setAttribute('onclick', `handleContentInteraction('comment', '${targetId}')`);
+
+            document.getElementById('content-modal').style.display = 'flex';
+        }
+
+
+        /** Maneja el Like o Comentario en el contenido (1 crédito, transferido a la mujer). */
+        window.handleContentInteraction = async (action, targetId) => {
+            if (currentUserData.gender === 'female') return; 
+
+            let COSTO, reason, input;
+            
+            if (action === 'like') {
+                COSTO = COSTO_CONTENT_LIKE;
+                reason = 'Content Like';
+            } else if (action === 'comment') {
+                COSTO = COSTO_COMMENT;
+                reason = 'Content Comment';
+                input = document.getElementById('comment-input').value.trim();
+                if (!input) {
+                    showModal('Atención', 'Por favor escribe un comentario antes de enviarlo.', 'OK');
+                    return;
+                }
+            } else {
+                return;
+            }
+
+            if (currentUserData.credits < COSTO) {
+                showModal('Créditos Insuficientes', 
+                          `Necesitas ${COSTO} créditos para esta interacción, pero solo tienes ${currentUserData.credits}.`, 
+                          'Aceptar');
+                return;
+            }
+
+            try {
+                // 1. Deducir y transferir créditos
+                const success = await transferCredits(userId, targetId, COSTO, reason);
+
+                if (success) {
+                    // 2. Simulación de éxito (En una app real se actualizaría Firestore y se notificaría al cliente)
+                    const targetProfile = mockProfiles.find(p => p.id === targetId);
+                    const mediaItem = targetProfile?.media?.[0];
+
+                    if (mediaItem) {
+                        if (action === 'like') {
+                            mediaItem.likes++;
+                            document.getElementById('content-likes').textContent = mediaItem.likes;
+                            showModal('Éxito', `Has dado "Me Gusta". Se te ha descontado ${COSTO} crédito, que se ha transferido al perfil.`, 'Continuar');
+
+                        } else if (action === 'comment') {
+                            mediaItem.comments.push({ user: currentUserData.name || 'Usuario Actual', text: input });
+                            document.getElementById('comment-input').value = '';
+                            document.getElementById('content-comments-count').textContent = mediaItem.comments.length;
+                            showModal('Éxito', `Comentario enviado. Se te ha descontado ${COSTO} crédito, que se ha transferido al perfil.`, 'Continuar');
+                            viewMatchContent(targetId, targetProfile.name); // Re-renderizar comentarios
+                        }
+                    }
+
+                }
+            } catch (error) {
+                showModal('Error de Transacción', error.message || 'Error al procesar la interacción de contenido.', 'Aceptar');
+            }
+        }
+
+
+        // --- FIREBASE: INICIALIZACIÓN Y LISTENERS ---
+
+        /** Inicializa perfiles de prueba y el perfil del usuario actual. */
+        async function initializeMockProfiles() {
+            try {
+                const profilesCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'profiles');
+                
+                // 1. Determinar el perfil del usuario actual 
+                const userRef = doc(profilesCollectionRef, userId);
+                const userSnap = await getDoc(userRef);
+                
+                if (!userSnap.exists() || !userSnap.data().gender) {
+                    const myGender = Math.random() < 0.5 ? 'male' : 'female'; 
+
+                    await setDoc(userRef, { 
+                        name: 'Usuario Actual', 
+                        age: Math.floor(Math.random() * 10) + 20, 
+                        bio: `¡Este soy yo (${myGender})!`, 
+                        image: `https://placehold.co/400x500/1D4ED8/ffffff?text=${myGender.toUpperCase()}`, 
+                        gender: myGender,
+                        credits: CREDITOS_INICIALES,
+                        likes: {}, 
+                        passes: {} 
+                    }, { merge: true });
+                }
+
+                // 2. Crear o actualizar perfiles de prueba
+                for (const mockProfile of mockProfiles) {
+                    const profileRef = doc(profilesCollectionRef, mockProfile.id);
+                    await setDoc(profileRef, mockProfile, { merge: true });
+                }
+                
+            } catch (error) {
+                 console.error("Error al inicializar perfiles de prueba:", error);
+            }
+        }
+
+        /** Listener para escuchar los matches del usuario actual. */
+        function setupMatchesListener() {
+            if (!db || !userId) return;
+
+            const matchesCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'matches');
+            const q = query(matchesCollectionRef, where('active', '==', true)); 
+
+            onSnapshot(q, (snapshot) => {
+                const fetchedMatches = [];
+                snapshot.forEach(doc => {
+                    const match = doc.data();
+                    if (match.user1Id === userId || match.user2Id === userId) {
+                        fetchedMatches.push({ id: doc.id, ...match });
+                    }
+                });
+                currentMatches = fetchedMatches;
+                document.getElementById('match-count').textContent = currentMatches.length;
+
+                if (document.getElementById('matches-view').classList.contains('hidden') === false) {
+                     renderMatchesList();
+                }
+            }, (error) => {
+                console.error("Error al escuchar matches:", error);
+            });
+        }
+        
+        /** Listener para el perfil del usuario actual (para actualizar créditos, etc.) */
+        function setupUserListener() {
+            if (!db || !userId) return;
+
+            const userRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', userId);
+            
+            onSnapshot(userRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    currentUserData = docSnap.data();
+                    
+                    const credits = currentUserData.credits || 0;
+                    const gender = currentUserData.gender || 'unknown';
+
+                    document.getElementById('user-credits').textContent = credits;
+                    document.getElementById('user-info').textContent = `Tu ID: ${userId.substring(0, 4)}... (${gender === 'male' ? '♂️ Hombre' : '♀️ Mujer'})`;
+                    
+                    // Mostrar regla de monetización
+                    if (gender === 'male') {
+                        document.getElementById('monetization-rule').textContent = `Regla: Like/Comentario (1 Cr.), Like Perfil (5 Cr.), Llamada (20 Cr.). ¡Todo se transfiere a la mujer!`;
+                    } else {
+                        document.getElementById('monetization-rule').textContent = `Regla: Ganas créditos por las interacciones de los hombres. Solo puedes Mensajear.`;
+                    }
+                }
+            }, (error) => {
+                console.error("Error al escuchar perfil de usuario:", error);
+            });
+        }
+
+
+        /** Inicializa la aplicación y Firebase. */
+        async function initApp() {
+            
+            try {
+                setLogLevel('debug');
+                
+                // Este bloque de código utiliza las variables inyectadas (__firebase_config, etc.)
+                // Si la configuración fuera realmente nula, esta línea lanzaría un error. 
+                // Al no lanzar un error, confirmamos que el entorno ya ha inyectado la configuración base necesaria.
+                const app = initializeApp(firebaseConfig); 
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Autenticación: usa el token inyectado o inicia sesión anónimamente.
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        
+                        await initializeMockProfiles(); 
+                        
+                        setupUserListener();
+                        setupMatchesListener();
+
+                        await loadProfiles(); 
+
+                    } else {
+                        console.error('No autenticado. Intentando firmar anónimamente.');
+                        document.getElementById('status-message').textContent = 'No autenticado. Reiniciando...';
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error de inicialización de Firebase:", error);
+                document.getElementById('status-message').textContent = `Error de inicio: ${error.message}. Verifica tu consola para más detalles.`;
+            }
+        }
+
+        initApp();
+    </script>
+</body>
+</html>
+
+
